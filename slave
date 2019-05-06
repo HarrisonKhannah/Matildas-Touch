@@ -1,0 +1,119 @@
+#include <CurieBLE.h>
+#include <Servo.h>
+
+#define LED_PIN 9
+#define LED_PIN_door 5
+#define LED_PIN_curtain 6
+
+// Service and Characteristic IDs
+//  These MUST match the respective IDs on the slave device
+#define SERVICE_ID "6969"
+#define CHARACTERISTIC_ID_light "F000"
+#define CHARACTERISTIC_ID_door "F001"
+#define CHARACTERISTIC_ID_curtain "F002"
+
+Servo myservo;  // create servo object to control a servo
+
+int pos = 0;    // variable to store the servo position
+
+
+// Create a Service
+// this ID can be any 4-digit hex number
+BLEService ledService(SERVICE_ID);
+
+// Create a Characteristic for the LED, that can be read and written to
+BLEUnsignedCharCharacteristic ledChar(CHARACTERISTIC_ID_light, BLERead | BLEWrite);
+BLEUnsignedCharCharacteristic doorChar(CHARACTERISTIC_ID_door, BLERead | BLEWrite);
+BLEUnsignedCharCharacteristic curtainChar(CHARACTERISTIC_ID_curtain, BLERead | BLEWrite);
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+
+  pinMode(LED_PIN_door, OUTPUT);
+
+  pinMode(LED_PIN_curtain, OUTPUT);
+
+
+  myservo.attach(9);  // attaches the servo on pin 9 to the servo object
+
+  Serial.begin(9600);
+
+  // Begin initialization
+  BLE.begin();
+
+  // Set the name of the device
+  BLE.setLocalName("Slave Board");
+
+  // Set the service as the active, broadcasting one
+  BLE.setAdvertisedService(ledService);
+
+  // Add the characteristics to the service
+  ledService.addCharacteristic(ledChar);
+  ledService.addCharacteristic(doorChar);
+  ledService.addCharacteristic(curtainChar);
+
+
+  // Register the service with the device
+  BLE.addService(ledService);
+
+  // Set the initial value for the characeristics
+  ledChar.setValue(0);
+
+  // Start broadcasting
+  BLE.advertise();
+}
+
+void loop() {
+  // Listen for BLE peripherals to connect
+  BLEDevice central = BLE.central();
+
+  // If a central is connected
+  if (central) {
+    while (central.connected()) {
+  Serial.println("Hello");
+
+      // If data has been received
+      if (ledChar.written()) {
+        if (ledChar.value() != 0){
+        // Write the received value to the LED
+        analogWrite(LED_PIN, ledChar.value());
+        
+        }
+
+      }
+      if (doorChar.written()) {
+
+
+{
+if (doorChar > 0 && doorChar<100) {
+  for(pos = 90; pos <= 180; pos += 1) // goes from 0 degrees to 180 degrees
+  {                                  // in steps of 1 degree
+    myservo.write(pos);              // tell servo to go to position in variable 'pos'
+    delay(15);                       // waits 15ms for the servo to reach the position
+  }
+}
+if (doorChar > 100 && doorChar<200) {
+  for(pos = 190; pos>=90; pos-=1)     // goes from 180 degrees to 0 degrees
+  {
+    myservo.write(pos);              // tell servo to go to position in variable 'pos'
+    delay(15);                       // waits 15ms for the servo to reach the position
+  }
+}
+}
+      }
+        analogWrite(LED_PIN_door, doorChar.value());
+
+      } if (curtainChar.written()) {
+        analogWrite(LED_PIN_curtain, curtainChar.value());
+      }
+
+      // Device has disconnected, reset the LED
+      //ledChar.setValue(0);
+//      analogWrite(LED_PIN, ledChar.value());
+//      analogWrite(LED_PIN_door, doorChar.value());
+//      analogWrite(LED_PIN_curtain, curtainChar.value());
+
+    }
+  }
+
+
