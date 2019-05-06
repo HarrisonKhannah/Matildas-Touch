@@ -1,0 +1,197 @@
+#include "CurieIMU.h"
+#include "CurieBLE.h"
+#include <MadgwickAHRS.h>
+
+//BLE
+
+// Service and Characteristic IDs
+// These MUST match the respective IDs on the slave device
+#define SERVICE_ID "6969"
+#define CHARACTERISTIC_ID_light "F000"
+#define CHARACTERISTIC_ID_door "F001"
+#define CHARACTERISTIC_ID_curtain "F002"
+
+
+
+
+//BLE
+
+Madgwick filter;
+int led = 9;
+int ledT = 9;
+
+int fadeAmount = 5;    // how many points to fade the LED by
+const int buzzer = 3 ; //buzzer to arduino pin 9
+int brightness;
+int doubleTap = true;
+unsigned long microsPerReading, microsPrevious;
+int bright;
+
+
+void setup() {
+
+  Serial.begin(9600);
+
+  CurieIMU.begin();
+  CurieIMU.setGyroRate(25);
+  CurieIMU.setAccelerometerRate(25);
+
+  CurieIMU.setGyroRange(250);
+  microsPerReading = 1000000 / 25;
+  microsPrevious = micros();
+
+  CurieIMU.setAccelerometerRange(4);
+
+  // Reduce threshold to allow detection of weaker taps (>= 750mg)
+  CurieIMU.setDetectionThreshold(CURIE_IMU_TAP, 750); // (750mg)
+
+  // Enable Double-Tap detection
+  CurieIMU.interrupts(CURIE_IMU_TAP);
+
+  CurieIMU.attachInterrupt(eventCallback);
+  //BLE
+
+  // Begin BLE
+  BLE.begin();
+
+  // Set name (not that useful tbh)
+  BLE.setLocalName("LED Master");
+
+  // Start scanning for the service ID 6969
+  //  (CHANGE THIS TO THE ID OF YOUR SERVICE)
+  BLE.scanForUuid(SERVICE_ID);
+
+
+  //BLE
+  pinMode(buzzer, OUTPUT);
+
+}
+
+void loop() {
+  int aix, aiy, aiz;
+  int gix, giy, giz;
+  float ax, ay, az;
+  float gx, gy, gz;
+  float roll, RollX, pitch, heading;
+  unsigned long microsNow;
+  //BLE
+  BLEDevice peripheral = BLE.available();
+
+  // If I've found one:
+  if (peripheral) {
+    Serial.println("Found device");
+
+    // Stop scanning
+    BLE.stopScan();
+
+    Serial.println("Connecting...");
+
+    // Connect to it
+    peripheral.connect();
+
+    Serial.println("Discovering Attributes...");
+
+    // Discover the charateristics and attributes on the device
+    peripheral.discoverAttributes();
+
+    // ledChar is the Charateristic on the other device
+    BLECharacteristic ledChar = peripheral.characteristic(CHARACTERISTIC_ID_light);
+    BLECharacteristic doorChar = peripheral.characteristic(CHARACTERISTIC_ID_door);
+    BLECharacteristic curtainChar = peripheral.characteristic(CHARACTERISTIC_ID_curtain);
+
+    Serial.println("Done. Waiting for input.");
+
+    while (peripheral.connected()) {
+      
+      if (true) {
+        microsNow = micros();
+
+        filter.begin(25);
+
+        if (microsNow - microsPrevious >= microsPerReading) {
+
+          // read raw data from CurieIMU
+          CurieIMU.readMotionSensor(aix, aiy, aiz, gix, giy, giz);
+
+          ax = convertRawAcceleration(aix);
+          ay = convertRawAcceleration(aiy);
+          az = convertRawAcceleration(aiz);
+          gx = convertRawGyro(gix);
+          gy = convertRawGyro(giy);
+          gz = convertRawGyro(giz);
+
+          filter.updateIMU(gx, gy, gz, ax, ay, az);
+
+          roll = filter.getRoll();
+          pitch = filter.getPitch();
+          heading = filter.getYaw();
+
+
+          microsPrevious = microsPrevious + microsPerReading;
+          int RollX = map (roll, -100, 100, 0, 255);
+          int PitchX = map (pitch, 5, 2000, 0, 255);
+          int HeadingX = map (heading, 150 , 190, 0, 255);
+
+
+
+
+          Serial.println(RollX);
+         
+          ledChar.writeByte(RollX);
+          doorChar.writeByte(HeadingX);
+          curtainChar.writeByte(PitchX);
+
+        }
+
+      }
+
+
+    }
+  }
+}
+
+static void eventCallback() {
+  if (CurieIMU.getInterruptStatus(CURIE_IMU_TAP)) {
+
+    doubleTap = !doubleTap;
+    tone(buzzer, 1000, 500);
+  }
+
+
+}
+float convertRawAcceleration(int aRaw) {
+
+
+  float a = (aRaw * 2.0) / 32768.0;
+}
+
+float convertRawGyro(int gRaw) {
+  // since we are using 250 degrees/seconds range
+  // -250 maps to a raw value of -32768
+  // +250 maps  to a raw value of 32767
+
+  float g = (gRaw * 250.0) / 32768.0;
+  return g;
+}
+
+
+
+
+/*
+   Copyright (c) 2016 Intel Corporation.  All rights reserved.
+
+   This library is free software; you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public
+   License as published by the Free Software Foundation; either
+   version 2.1 of the License, or (at your option) any later version.
+
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public
+   License along with this library; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+*/
